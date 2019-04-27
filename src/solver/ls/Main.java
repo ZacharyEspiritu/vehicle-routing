@@ -6,8 +6,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class Main
-{  
-  public static void main(String[] args) 
+{
+  public static void main(String[] args)
   {
 	if(args.length == 0)
 	{
@@ -25,7 +25,7 @@ public class Main
 	VRPInstance instance = new VRPInstance(input);
 	watch.stop();
 
-	System.out.println("Instance: " + filename + 
+	System.out.println("Instance: " + filename +
 					   " Time: " 	+ String.format("%.2f",watch.getTime()) +
 					   " Result: " 	+ "N/A" + " Solution: N/A");
   }
