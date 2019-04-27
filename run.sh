@@ -9,7 +9,6 @@ then
 	echo "Usage: `basename $0` <input>"
 	exit $E_BADARGS
 fi
-	
-input=$1
 
-java -cp src solver.ls.Main $input
+INPUT=$1
+python ./src/local-search.py $INPUT
