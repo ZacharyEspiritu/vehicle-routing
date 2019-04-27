@@ -11,4 +11,4 @@ then
 fi
 
 INPUT=$1
-python ./src/local-search.py $INPUT
+./src/pypy3.6-v7.1.1-linux64/bin/pypy3 ./src/local-search.py $INPUT
