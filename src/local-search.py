@@ -26,18 +26,24 @@ class VRPInstance:
             ay = self.y_coordinates[a_index]
             for b_index, bx in enumerate(self.y_coordinates):
                 by   = self.y_coordinates[b_index]
-                dist = sqrt(((ax - bx) ** 2) + ((ay - by) ** 2))
+                dist = sqrt(((ax - bx) ** 2.0) + ((ay - by) ** 2.0))
                 self.distance_lookup[a_index][b_index] = dist
 
     def __repr__(self):
         return pformat(vars(self), indent=4, width=1)
 
     def get_initial_solution(self):
-        vehicle_routes = [[index] for index, _ in enumerate(self.customer_demands) if index != 0]
+        vehicle_routes   = [[] for _ in range(0, self.num_vehicles)]
+        customer_indices = list(range(1, self.num_customers))
+        random.shuffle(customer_indices)
+        vehicle_routes.append(customer_indices)
         return Solution(vehicle_routes)
 
     def get_distance_between_customers(self, a_index: int, b_index: int):
-        return self.distance_lookup[a_index][b_index]
+        x_sqr = (self.x_coordinates[a_index] - self.x_coordinates[b_index]) ** 2.0
+        y_sqr = (self.y_coordinates[a_index] - self.y_coordinates[b_index]) ** 2.0
+        return sqrt(x_sqr + y_sqr)
+        # return self.distance_lookup[a_index][b_index]
 
     def get_route_capacity(self, route: [int]):
         capacity = 0
@@ -87,8 +93,9 @@ class Solution:
         return pformat(vars(self), indent=4, width=1)
 
     def format_routes_string(self):
+        assert(len(self.vehicle_routes[-1]) == 0)
         res = ""
-        for route in self.vehicle_routes:
+        for route in self.vehicle_routes[:-1]:
             res += " 0"
             for loc in route:
                 res += " "
@@ -133,7 +140,7 @@ def local_search(objective_function, proposal_function, initial_solution,
         proposal_solution  = proposal_function(current_solution)
         proposal_objective = objective_function(proposal_solution)
 
-        if proposal_objective < current_objective + acceptance_epsilon:
+        if proposal_objective - current_objective < best_objective * acceptance_epsilon:
             current_solution  = proposal_solution
             current_objective = proposal_objective
 
@@ -151,17 +158,25 @@ def local_search(objective_function, proposal_function, initial_solution,
 
 
 def objective(proposal_solution: Solution, vrp_instance: VRPInstance):
-    distance = 0
-    for route in proposal_solution.vehicle_routes:
-        if vrp_instance.get_route_capacity(route) > vrp_instance.vehicle_capacity:
+    distances = []
+    for index, route in enumerate(proposal_solution.vehicle_routes):
+        if (index < vrp_instance.num_vehicles) and (vrp_instance.get_route_capacity(route) > vrp_instance.vehicle_capacity):
             return float_info.max
 
-        distance += vrp_instance.get_distance_between_customers(0, route[0])
-        for a, b in zip(route, route[1:]):
-            distance += vrp_instance.get_distance_between_customers(a, b)
-        distance += vrp_instance.get_distance_between_customers(route[-1], 0)
+        route_distance = 0
+        if len(route) > 0:
+            route_distance += vrp_instance.get_distance_between_customers(0, route[0])
+            for a, b in zip(route, route[1:]):
+                route_distance += vrp_instance.get_distance_between_customers(a, b)
+            route_distance += vrp_instance.get_distance_between_customers(route[-1], 0)
 
-    return distance
+        distances.append(route_distance)
+
+
+    # Handle ghost vehicle:
+    distances[-1] *= 100000
+
+    return sum(distances)
 
 
 ##
@@ -271,6 +286,7 @@ def proposal_two_opt_swap(x: Solution):
 
     route[segment_start:segment_end] = route[segment_start:segment_end][::-1]
     x.vehicle_routes[index] = route
+
     return x
 
 def proposal_relocate_customer(x: Solution):
@@ -278,26 +294,21 @@ def proposal_relocate_customer(x: Solution):
     Relocates a customer from a route A to another route B.
     """
     route_num_a = random.randint(0, len(x.vehicle_routes) - 1)
-    route_num_b = random.randint(0, len(x.vehicle_routes))
+    route_num_b = random.randint(0, len(x.vehicle_routes) - 1)
 
     if route_num_a == route_num_b:
         return x
 
-    if route_num_b == len(x.vehicle_routes):
-        x.vehicle_routes.append([])
-
     route_a    = x.vehicle_routes[route_num_a]
     route_b    = x.vehicle_routes[route_num_b]
 
-    index_a    = random.randint(0, len(route_a) - 1)
-    customer_a = route_a[index_a]
-    del route_a[index_a]
+    if len(route_a) > 0:
+        index_a    = random.randint(0, len(route_a) - 1)
+        customer_a = route_a[index_a]
+        del route_a[index_a]
 
-    route_b.insert(random.randint(0, len(route_b)), customer_a)
-    x.vehicle_routes[route_num_b] = route_b
-
-    if len(route_a) == 0:
-        del x.vehicle_routes[route_num_a]
+        route_b.insert(random.randint(0, len(route_b)), customer_a)
+        x.vehicle_routes[route_num_b] = route_b
 
     return x
 
@@ -313,17 +324,19 @@ def proposal_exchange_customers(x: Solution):
 
     route_a = x.vehicle_routes[route_num_a]
     route_b = x.vehicle_routes[route_num_b]
-    index_a = random.randint(0, len(route_a) - 1)
-    index_b = random.randint(0, len(route_b) - 1)
 
-    customer_a = route_a[index_a]
-    customer_b = route_b[index_b]
+    if len(route_a) > 0 and len(route_b) > 0:
+        index_a = random.randint(0, len(route_a) - 1)
+        index_b = random.randint(0, len(route_b) - 1)
 
-    route_a[index_a] = customer_b
-    route_b[index_b] = customer_a
+        customer_a = route_a[index_a]
+        customer_b = route_b[index_b]
 
-    x.vehicle_routes[route_num_a] = route_a
-    x.vehicle_routes[route_num_b] = route_b
+        route_a[index_a] = customer_b
+        route_b[index_b] = customer_a
+
+        x.vehicle_routes[route_num_a] = route_a
+        x.vehicle_routes[route_num_b] = route_b
 
     return x
 
@@ -339,26 +352,46 @@ def proposal_cross_routes(x: Solution):
 
     route_a = x.vehicle_routes[route_num_a]
     route_b = x.vehicle_routes[route_num_b]
-    index_a = random.randint(0, len(route_a) - 1)
-    index_b = random.randint(0, len(route_b) - 1)
 
-    segment_a = route_a[index_a:len(route_a)]
-    segment_b = route_b[index_b:len(route_b)]
+    if len(route_a) > 0 and len(route_b) > 0:
+        index_a = random.randint(0, len(route_a) - 1)
+        index_b = random.randint(0, len(route_b) - 1)
 
-    x.vehicle_routes[route_num_a] = route_a[:index_a]
-    x.vehicle_routes[route_num_b] = route_b[:index_b]
+        segment_a = route_a[index_a:len(route_a)]
+        segment_b = route_b[index_b:len(route_b)]
 
-    x.vehicle_routes[route_num_a].extend(segment_b)
-    x.vehicle_routes[route_num_b].extend(segment_a)
+        x.vehicle_routes[route_num_a] = route_a[:index_a]
+        x.vehicle_routes[route_num_b] = route_b[:index_b]
 
-    if len(x.vehicle_routes[route_num_a]) == 0:
-        del x.vehicle_routes[route_num_a]
-    if len(x.vehicle_routes[route_num_b]) == 0:
-        del x.vehicle_routes[route_num_b]
+        x.vehicle_routes[route_num_a].extend(segment_b)
+        x.vehicle_routes[route_num_b].extend(segment_a)
 
     return x
 
 
+def proposal_stochastic_route_swapping(x: Solution):
+
+    temp = Solution([a[:] for a in x.vehicle_routes])
+    rand = random.randint(0, 1)
+    if rand == 0:
+        return proposal_reorder_customer_in_route(temp)
+    elif rand == 1:
+        return proposal_two_opt_swap(temp)
+
+def proposal_reorder_customer_in_route(x: Solution):
+
+    route_num = random.randint(0, len(x.vehicle_routes) - 1)
+    route     = x.vehicle_routes[route_num]
+
+    if len(route) > 0:
+        loc_index  = random.randint(0, len(route) - 1)
+        customer = route[loc_index]
+        del route[loc_index]
+
+        route.insert(random.randint(0, len(route)), customer)
+        x.vehicle_routes[route_num] = route
+
+    return x
 ##
 ## Main
 ##
@@ -375,32 +408,55 @@ def main():
     initial_solution  = vrp_instance.get_initial_solution()
     initial_objective = objective(initial_solution, vrp_instance)
 
-    epsilon_schedule = []
-    for i in range(1, vrp_instance.num_customers):
-        next_epsilon = initial_objective / (3 ** i)
-        if next_epsilon < 1:
-            break
-        epsilon_schedule.append(next_epsilon)
-    epsilon_schedule.append(1)
-    epsilon_schedule.append(5)
-    epsilon_schedule.append(3)
-    epsilon_schedule.append(1)
-    print(epsilon_schedule)
+    # epsilon_schedule = []
+    # for i in range(1, vrp_instance.num_customers + 5):
+    #     next_epsilon = initial_objective / (10 ** i)
+    #     if next_epsilon < 1:
+    #         break
+    #     epsilon_schedule.append(next_epsilon)
+    # epsilon_schedule.append(1)
+    # epsilon_schedule.append(5)
+    # epsilon_schedule.append(3)
+    # epsilon_schedule.append(1)
+    # print(epsilon_schedule)
 
+    epsilon_schedule = [0.10, 0.10, 0.05, 0.03, 0.02, 0.01, 0.005, 0.0025, 0.001, 0.0001, 0.00001]
 
     # Solve instance:
     start_time = time()
 
-    annealed_solution  = initial_solution
+    annealed_solution = initial_solution
     for epsilon in epsilon_schedule:
-        print("Epsilon: " + str(epsilon))
-        print("Current Objective: " + str(objective(annealed_solution, vrp_instance)))
+        current_objective = objective(annealed_solution, vrp_instance)
+        print("Epsilon: " + str(epsilon) + " (~" + str(epsilon * current_objective) + ")")
+        print("Current Objective: " + str(current_objective))
+        next_annealed = local_search(lambda x: objective(x, vrp_instance),
+                                     lambda x: proposal_stochastic_greedy(x, vrp_instance),
+                                     annealed_solution, epsilon, 7, 3) # float_info.max
+
+        prev_objective = objective(annealed_solution, vrp_instance)
+        next_objective = objective(next_annealed, vrp_instance)
+
+        annealed_solution = next_annealed
+        # if prev_objective - next_objective < 0.00001:
+        #     break
+
+    print("Done with annealing. Going to two-opt swap!")
+
+    epsilon_schedule = [0.30, 0.20, 0.10, 0.03, 0.01, 0.005]
+    for epsilon in epsilon_schedule:
+        current_objective = objective(annealed_solution, vrp_instance)
+        print("Epsilon: " + str(epsilon) + " (~" + str(epsilon * current_objective) + ")")
+        print("Current Objective: " + str(current_objective))
+
         annealed_solution = local_search(lambda x: objective(x, vrp_instance),
-                                         lambda x: proposal_stochastic_greedy(x, vrp_instance),
-                                         annealed_solution, epsilon, 7, 3) # float_info.max
+                                     proposal_stochastic_route_swapping,
+                                     annealed_solution, epsilon, 3, 3) # float_info.max
+
 
     end_time     = time()
     elapsed_time = end_time - start_time
+
 
     # Get the optimized solution answers:
     objective_value = objective(annealed_solution, vrp_instance)
