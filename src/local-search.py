@@ -590,9 +590,9 @@ def main():
     initial_objective = objective(initial_solution, vrp_instance)
 
     # Set up some annealing schedules to use during our local search iterations:
-    epsilon_schedule     = [10000, 1000, 100, 50, 10, 5,  2,  1.5, 1,  0.5, 0.1]
-    improvement_schedule = [300,   100,  10,  8,  8,  7,  3,  3,   3,  1,   0.5]
-    timeout_schedule     = [3,     4,    5,   6,  7,  12, 10, 8,   7,  5,   4]
+    epsilon_schedule     = [1000, 100, 50, 10, 5,  2,  1.5, 1,  0.5, 0.1]
+    improvement_schedule = [100,  10,  8,  8,  7,  6,  3,   3,  1,   0.5]
+    timeout_schedule     = [2,    4,   6,  12, 8,  6,  5,   4,  4,   4]
 
     # Keep some variables for tracking state over iterations:
     iters_since_change = 0
