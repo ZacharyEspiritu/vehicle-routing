@@ -629,8 +629,8 @@ def main():
 
         # Apply local search to the current solution:
         next_annealed = local_search(lambda x: objective(x, vrp_instance),
-                                     proposal_function,
-                                     annealed_solution, epsilon, timeout, improvement_delta)
+                                     proposal_function, annealed_solution,
+                                     epsilon, timeout, improvement_delta)
 
         prev_objective = objective(annealed_solution, vrp_instance)
         next_objective = objective(next_annealed, vrp_instance)
