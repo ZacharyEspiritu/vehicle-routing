@@ -39,6 +39,9 @@ class VRPInstance:
 
         extras = []
         for (demand, customer) in tuples:
+            if customer == 0:
+                continue
+
             assigned = False
             for v in range(0, self.num_vehicles):
                 if vehicle_demands[v] + demand <= self.vehicle_capacity:
@@ -54,9 +57,6 @@ class VRPInstance:
         return Solution(vehicle_routes)
 
     def get_distance_between_customers(self, a_index: int, b_index: int):
-        # x_sqr = (self.x_coordinates[a_index] - self.x_coordinates[b_index]) ** 2.0
-        # y_sqr = (self.y_coordinates[a_index] - self.y_coordinates[b_index]) ** 2.0
-        # return sqrt(x_sqr + y_sqr)
         return self.distance_lookup[a_index][b_index]
 
     def get_route_capacity(self, route: [int]):
@@ -117,6 +117,19 @@ class Solution:
             res += " 0"
         return res
 
+    def get_solution_file(self, output_file, objective_value):
+        assert(len(self.vehicle_routes[-1]) == 0)
+        res = "{:.2f}".format(objective_value) + " 0\n"
+        for route in self.vehicle_routes[:-1]:
+            res += "0"
+            for loc in route:
+                res += " "
+                res += str(loc)
+            res += " 0\n"
+
+        with open(output_file, "w") as file:
+            file.write(res)
+
 def local_search(objective_function, proposal_function, initial_solution,
                  acceptance_epsilon, improvement_time, improvement_delta):
     """
@@ -137,59 +150,92 @@ def local_search(objective_function, proposal_function, initial_solution,
         happen in a given time period of improvement_time before we
         terminate.
     """
-
+    # Calculate the initial objective value:
     initial_objective = objective_function(initial_solution)
-    print(initial_objective)
 
+    # Keep some variables for keeping track of the current (accepted) solution:
     current_solution  = initial_solution
     current_objective = initial_objective
 
+    # Keep some variables for keeping track of the best solution we've seen so
+    # far:
     best_solution  = initial_solution
     best_objective = initial_objective
 
+    # Iterate until we stop making enough improvements over a certain period
+    # of time (based on the improvement_time and improvement_delta arguments):
     since_last_improvement = time()
-
     while ((time() < since_last_improvement + improvement_time) and
             (initial_objective - current_objective < improvement_delta)):
+        # Propose a new solution and get its objective value:
         proposal_solution  = proposal_function(current_solution)
         proposal_objective = objective_function(proposal_solution)
 
-        if proposal_objective - current_objective < best_objective * acceptance_epsilon:
+        # Check if this meets our acceptance criterion:
+        if proposal_objective - current_objective < acceptance_epsilon:
+            # If so, update the current (accepted) solution variables:
             current_solution  = proposal_solution
             current_objective = proposal_objective
 
-            if current_objective < best_objective: # minimize:
+            # Check if it's a new best solution:
+            if current_objective < best_objective:
+                # If so, update the best solution variables:
                 best_solution  = current_solution
                 best_objective = current_objective
-
                 print(best_objective)
 
+                # If we've improved enough (based on the improvement_delta
+                # argument), restart our expiration timer on this local search
+                # run:
                 if initial_objective - current_objective >= improvement_delta:
                     initial_objective      = current_objective
                     since_last_improvement = time()
 
+    # Return the best solution we've seen so far:
     return best_solution
 
 
 def objective(proposal_solution: Solution, vrp_instance: VRPInstance):
+    """
+    The objective function for the vehicle routing problem. In "normal" cases,
+    returns a value equal to the total distance travelled by all routes in the
+    input Solution.
+
+    If any of a given Solution's routes do not satisfy the `vehicle_capacity`
+    constraint, returns float_info.max as a penalty value.
+
+    If any customers are currently being serviced by the "ghost" vehicle, the
+    distance traversed by the "ghost" vehicle is multiplied by a large constant
+    as a penalty. This incentivizes the local search algorithm to move as many
+    things out of the "ghost" vehicle as possible as to lower the objective
+    function's value.
+    """
+    # Loop over every single route and determine how much distance it travels:
     distances = []
     for index, route in enumerate(proposal_solution.vehicle_routes):
-        if (index < vrp_instance.num_vehicles) and (vrp_instance.get_route_capacity(route) > vrp_instance.vehicle_capacity):
-            return float_info.max
+        # Check if this is a valid vehicle (that is, not the "ghost" vehicle:)
+        if index < vrp_instance.num_vehicles:
+            # Check if the solution satisfies the capacity constraint. If it
+            # doesn't, return a maximum float penalty value:
+            if vrp_instance.get_route_capacity(route) > vrp_instance.vehicle_capacity:
+                return float_info.max
 
+        # Otherwise, compute the total distance of this route and add it to our
+        # tracking array:
         route_distance = 0
         if len(route) > 0:
             route_distance += vrp_instance.get_distance_between_customers(0, route[0])
             for a, b in zip(route, route[1:]):
                 route_distance += vrp_instance.get_distance_between_customers(a, b)
             route_distance += vrp_instance.get_distance_between_customers(route[-1], 0)
-
         distances.append(route_distance)
 
-
-    # Handle ghost vehicle:
+    # Assign a penalty to customer locations that are located within the
+    # "ghost" vehicle (this incentivizes the local search algorithm to move
+    # as many things out of the "ghost" vehicle as possible):
     distances[-1] *= 100000
 
+    # Return the sum of all of the route distances:
     return sum(distances)
 
 
@@ -201,6 +247,9 @@ def objective(proposal_solution: Solution, vrp_instance: VRPInstance):
 ##
 
 def proposal_greedy_mix(x: Solution, vrp_instance: VRPInstance):
+    """
+    Tries all four proposal functions, then returns the best result.
+    """
     a = proposal_two_opt_swap(Solution([a[:] for a in x.vehicle_routes]))
     b = proposal_relocate_customer(Solution([a[:] for a in x.vehicle_routes]))
     c = proposal_exchange_customers(Solution([a[:] for a in x.vehicle_routes]))
@@ -215,7 +264,8 @@ def proposal_greedy_mix(x: Solution, vrp_instance: VRPInstance):
 
 def proposal_stochastic_greedy(x: Solution, vrp_instance: VRPInstance):
     """
-    Randomly chooses a proposal heuristic and returns the result.
+    Tries all four proposal functions several times, then returns the best
+    result.
     """
     rand = random.randint(0, 3)
     if rand == 0:
@@ -383,7 +433,10 @@ def proposal_cross_routes(x: Solution):
 
 
 def proposal_stochastic_route_swapping(x: Solution):
-
+    """
+    Randomly chooses a proposal heuristic related to improving single vehicle
+    routes and returns the result.
+    """
     temp = Solution([a[:] for a in x.vehicle_routes])
     rand = random.randint(0, 1)
     if rand == 0:
@@ -392,7 +445,9 @@ def proposal_stochastic_route_swapping(x: Solution):
         return proposal_two_opt_swap(temp)
 
 def proposal_reorder_customer_in_route(x: Solution):
-
+    """
+    Moves a customer within a route to another location in the route.
+    """
     route_num = random.randint(0, len(x.vehicle_routes) - 1)
     route     = x.vehicle_routes[route_num]
 
@@ -405,6 +460,7 @@ def proposal_reorder_customer_in_route(x: Solution):
         x.vehicle_routes[route_num] = route
 
     return x
+
 ##
 ## Main
 ##
@@ -433,16 +489,19 @@ def main():
     # epsilon_schedule.append(1)
     # print(epsilon_schedule)
 
-    epsilon_schedule = [0.10, 0.10, 0.05, 0.03, 0.02, 0.01, 0.005, 0.0025, 0.001, 0.0001, 0.00001]
-
+    epsilon_schedule = [0.20, 0.10, 0.05, 0.03, 0.02, 0.01, 0.005, 0.0025, 0.001, 0.001, 0.0001, 0.00001]
+    epsilon_schedule = [10000, 1000, 100, 50, 10, 5, 3, 2, 1.5, 1, 0.5]
     # Solve instance:
     start_time = time()
 
-    annealed_solution = initial_solution
+    iters_since_change = 0
+    annealed_solution  = initial_solution
     for epsilon in epsilon_schedule:
         current_objective = objective(annealed_solution, vrp_instance)
-        print("Epsilon: " + str(epsilon) + " (~" + str(epsilon * current_objective) + ")")
+
+        print("Epsilon: " + str(epsilon))
         print("Current Objective: " + str(current_objective))
+
         next_annealed = local_search(lambda x: objective(x, vrp_instance),
                                      lambda x: proposal_stochastic_greedy(x, vrp_instance),
                                      annealed_solution, epsilon, 7, 3) # float_info.max
@@ -451,25 +510,28 @@ def main():
         next_objective = objective(next_annealed, vrp_instance)
 
         annealed_solution = next_annealed
-        # if prev_objective - next_objective < 0.00001:
-        #     break
+        if prev_objective - next_objective < 0.00001:
+            iters_since_change += 1
+            if iters_since_change > 2:
+                break
+        else:
+            iters_since_change = 0
 
-    print("Done with annealing. Going to two-opt swap!")
+    # print("Done with annealing. Going to two-opt swap!")
 
-    epsilon_schedule = [0.30, 0.20, 0.10, 0.03, 0.01, 0.005]
-    for epsilon in epsilon_schedule:
-        current_objective = objective(annealed_solution, vrp_instance)
-        print("Epsilon: " + str(epsilon) + " (~" + str(epsilon * current_objective) + ")")
-        print("Current Objective: " + str(current_objective))
+    # epsilon_schedule = [0.30, 0.20, 0.10, 0.03, 0.01, 0.005]
+    # for epsilon in epsilon_schedule:
+    #     current_objective = objective(annealed_solution, vrp_instance)
+    #     print("Epsilon: " + str(epsilon) + " (~" + str(epsilon * current_objective) + ")")
+    #     print("Current Objective: " + str(current_objective))
 
-        annealed_solution = local_search(lambda x: objective(x, vrp_instance),
-                                     proposal_stochastic_route_swapping,
-                                     annealed_solution, epsilon, 3, 3) # float_info.max
+    #     annealed_solution = local_search(lambda x: objective(x, vrp_instance),
+    #                                  proposal_stochastic_route_swapping,
+    #                                  annealed_solution, epsilon, 3, 3) # float_info.max
 
 
     end_time     = time()
     elapsed_time = end_time - start_time
-
 
     # Get the optimized solution answers:
     objective_value = objective(annealed_solution, vrp_instance)
@@ -479,5 +541,9 @@ def main():
     print("Instance: " + os.path.basename(file_name) +
           " Time: " + "{:.2f}".format(elapsed_time) +
           " Result: " + "{:.2f}".format(objective_value) + " Solution:" + solution_string)
+
+    # Save the solution to a solution file:
+    solution_filename = "./sol/" + os.path.basename(file_name) + ".sol"
+    annealed_solution.get_solution_file(solution_filename, objective_value)
 
 main()
