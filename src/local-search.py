@@ -33,10 +33,25 @@ class VRPInstance:
         return pformat(vars(self), indent=4, width=1)
 
     def get_initial_solution(self):
+        tuples = [(demand, index) for index, demand in enumerate(self.customer_demands)]
+        tuples = sorted(tuples, key=lambda tup: tup[0])[::-1]
         vehicle_routes   = [[] for _ in range(0, self.num_vehicles)]
-        customer_indices = list(range(1, self.num_customers))
-        random.shuffle(customer_indices)
-        vehicle_routes.append(customer_indices)
+        vehicle_demands  = [0 for _ in range(0, self.num_vehicles)]
+
+        extras = []
+        for (demand, customer) in tuples:
+            assigned = False
+            for v in range(0, self.num_vehicles):
+                if vehicle_demands[v] + demand <= self.vehicle_capacity:
+                    vehicle_demands[v] += demand
+                    vehicle_routes[v].append(customer)
+                    assigned = True
+                    break
+            if not assigned:
+                print(str(customer) + " not assigned! (" + str(demand) + ")")
+                extras.append(customer)
+
+        vehicle_routes.append(extras)
         return Solution(vehicle_routes)
 
     def get_distance_between_customers(self, a_index: int, b_index: int):
@@ -198,7 +213,6 @@ def proposal_greedy_mix(x: Solution, vrp_instance: VRPInstance):
     d_obj = objective(d, vrp_instance)
 
     return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
-
 
 def proposal_stochastic_greedy(x: Solution, vrp_instance: VRPInstance):
     """
