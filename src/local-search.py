@@ -22,12 +22,11 @@ class VRPInstance:
         self.y_coordinates    = y_coordinates
 
         self.distance_lookup  = [[0 for _ in self.y_coordinates] for _ in self.x_coordinates]
-        for a_index, ax in enumerate(self.x_coordinates):
-            ay = self.y_coordinates[a_index]
-            for b_index, bx in enumerate(self.y_coordinates):
-                by   = self.y_coordinates[b_index]
-                dist = sqrt(((ax - bx) ** 2.0) + ((ay - by) ** 2.0))
-                self.distance_lookup[a_index][b_index] = dist
+        for customer_a in range(0, self.num_customers):
+            for customer_b in range(0, self.num_customers):
+                x_sqr = (self.x_coordinates[customer_a] - self.x_coordinates[customer_b]) ** 2.0
+                y_sqr = (self.y_coordinates[customer_a] - self.y_coordinates[customer_b]) ** 2.0
+                self.distance_lookup[customer_a][customer_b] = sqrt(x_sqr + y_sqr)
 
     def __repr__(self):
         return pformat(vars(self), indent=4, width=1)
@@ -55,10 +54,10 @@ class VRPInstance:
         return Solution(vehicle_routes)
 
     def get_distance_between_customers(self, a_index: int, b_index: int):
-        x_sqr = (self.x_coordinates[a_index] - self.x_coordinates[b_index]) ** 2.0
-        y_sqr = (self.y_coordinates[a_index] - self.y_coordinates[b_index]) ** 2.0
-        return sqrt(x_sqr + y_sqr)
-        # return self.distance_lookup[a_index][b_index]
+        # x_sqr = (self.x_coordinates[a_index] - self.x_coordinates[b_index]) ** 2.0
+        # y_sqr = (self.y_coordinates[a_index] - self.y_coordinates[b_index]) ** 2.0
+        # return sqrt(x_sqr + y_sqr)
+        return self.distance_lookup[a_index][b_index]
 
     def get_route_capacity(self, route: [int]):
         capacity = 0
