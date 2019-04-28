@@ -619,9 +619,17 @@ def main():
         if (initial_objective / 3) < epsilon:
             continue
 
+        # Choose a proposal function:
+        proposal_function = None
+        if iter_num < len(epsilon_schedule) / 4:
+            proposal_function = lambda x: proposal_greedy_mix(x, vrp_instance)
+        else:
+            proposal_function = lambda x: proposal_stochastic_greedy(x, vrp_instance)
+        assert(proposal_function is not None)
+
         # Apply local search to the current solution:
         next_annealed = local_search(lambda x: objective(x, vrp_instance),
-                                     lambda x: proposal_stochastic_greedy(x, vrp_instance),
+                                     proposal_function,
                                      annealed_solution, epsilon, timeout, improvement_delta)
 
         prev_objective = objective(annealed_solution, vrp_instance)
