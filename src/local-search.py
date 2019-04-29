@@ -382,6 +382,80 @@ def proposal_stochastic_greedy(x: Solution, vrp_instance: VRPInstance):
 
         return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
 
+def proposal_stochastic_greedy_inter(x: Solution, vrp_instance: VRPInstance):
+    """
+    Tries all inter-route proposal functions several times, then returns the best
+    result.
+    """
+    rand = random.randint(0, 2)
+    if rand == 0:
+        a = proposal_relocate_customer(Solution([a[:] for a in x.vehicle_routes]))
+        b = proposal_relocate_customer(Solution([a[:] for a in x.vehicle_routes]))
+        c = proposal_relocate_customer(Solution([a[:] for a in x.vehicle_routes]))
+        d = proposal_relocate_customer(Solution([a[:] for a in x.vehicle_routes]))
+
+        a_obj = objective(a, vrp_instance)
+        b_obj = objective(b, vrp_instance)
+        c_obj = objective(c, vrp_instance)
+        d_obj = objective(d, vrp_instance)
+
+        return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
+    elif rand == 1:
+        a = proposal_exchange_customers(Solution([a[:] for a in x.vehicle_routes]))
+        b = proposal_exchange_customers(Solution([a[:] for a in x.vehicle_routes]))
+        c = proposal_exchange_customers(Solution([a[:] for a in x.vehicle_routes]))
+        d = proposal_exchange_customers(Solution([a[:] for a in x.vehicle_routes]))
+
+        a_obj = objective(a, vrp_instance)
+        b_obj = objective(b, vrp_instance)
+        c_obj = objective(c, vrp_instance)
+        d_obj = objective(d, vrp_instance)
+
+        return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
+    else:
+        a = proposal_cross_routes(Solution([a[:] for a in x.vehicle_routes]))
+        b = proposal_cross_routes(Solution([a[:] for a in x.vehicle_routes]))
+        c = proposal_cross_routes(Solution([a[:] for a in x.vehicle_routes]))
+        d = proposal_cross_routes(Solution([a[:] for a in x.vehicle_routes]))
+
+        a_obj = objective(a, vrp_instance)
+        b_obj = objective(b, vrp_instance)
+        c_obj = objective(c, vrp_instance)
+        d_obj = objective(d, vrp_instance)
+
+        return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
+
+def proposal_stochastic_greedy_intra(x: Solution, vrp_instance: VRPInstance):
+    """
+    Tries all four proposal functions several times, then returns the best
+    result.
+    """
+    rand = random.randint(0, 1)
+    if rand == 0:
+        a = proposal_two_opt_swap(Solution([a[:] for a in x.vehicle_routes]))
+        b = proposal_two_opt_swap(Solution([a[:] for a in x.vehicle_routes]))
+        c = proposal_two_opt_swap(Solution([a[:] for a in x.vehicle_routes]))
+        d = proposal_two_opt_swap(Solution([a[:] for a in x.vehicle_routes]))
+
+        a_obj = objective(a, vrp_instance)
+        b_obj = objective(b, vrp_instance)
+        c_obj = objective(c, vrp_instance)
+        d_obj = objective(d, vrp_instance)
+
+        return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
+    else:
+        a = proposal_three_opt_swap(Solution([a[:] for a in x.vehicle_routes]), vrp_instance)
+        b = proposal_three_opt_swap(Solution([a[:] for a in x.vehicle_routes]), vrp_instance)
+        c = proposal_three_opt_swap(Solution([a[:] for a in x.vehicle_routes]), vrp_instance)
+        d = proposal_three_opt_swap(Solution([a[:] for a in x.vehicle_routes]), vrp_instance)
+
+        a_obj = objective(a, vrp_instance)
+        b_obj = objective(b, vrp_instance)
+        c_obj = objective(c, vrp_instance)
+        d_obj = objective(d, vrp_instance)
+
+        return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
+
 def proposal_stochastic_mix(x: Solution):
     """
     Randomly chooses a proposal heuristic and returns the result.
@@ -624,7 +698,7 @@ def main():
         if iter_num < len(epsilon_schedule) / 4:
             proposal_function = lambda x: proposal_greedy_mix(x, vrp_instance)
         else:
-            proposal_function = lambda x: proposal_stochastic_greedy(x, vrp_instance)
+            proposal_function = lambda x: (proposal_stochastic_greedy_inter if iter_num % 2 == 0 else proposal_stochastic_greedy_intra)(x, vrp_instance)
         assert(proposal_function is not None)
 
         # Apply local search to the current solution:
