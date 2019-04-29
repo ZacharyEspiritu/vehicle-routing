@@ -5,6 +5,9 @@ from math import sqrt
 from sys import argv, float_info
 from time import time
 from pprint import pformat
+from collections import Counter
+import math
+from itertools import accumulate
 
 ##
 ## Parser
@@ -27,6 +30,8 @@ class VRPInstance:
                 x_sqr = (self.x_coordinates[customer_a] - self.x_coordinates[customer_b]) ** 2.0
                 y_sqr = (self.y_coordinates[customer_a] - self.y_coordinates[customer_b]) ** 2.0
                 self.distance_lookup[customer_a][customer_b] = sqrt(x_sqr + y_sqr)
+        self.best_proposal_freq = Counter()
+        self.stoc_proposal_freq = Counter()
 
     def __repr__(self):
         return pformat(vars(self), indent=4, width=1)
@@ -313,15 +318,20 @@ def proposal_greedy_mix(x: Solution, vrp_instance: VRPInstance):
     d_obj = objective(d, vrp_instance)
     e_obj = objective(e, vrp_instance)
 
-    return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d), (e_obj, e)], key=lambda tup: tup[0])[0][1]
+    results = [(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d), (e_obj, e)]
+    results = sorted([(obj, prop, idx) for (idx, (obj, prop)) in enumerate(results)], key=lambda tup: tup[0])
+    vrp_instance.best_proposal_freq[results[0][2]] += 1
+    return results[0][1]
 
 def proposal_stochastic_greedy(x: Solution, vrp_instance: VRPInstance):
     """
     Tries all four proposal functions several times, then returns the best
     result.
     """
-    rand = random.randint(0, 4)
-    if rand == 0:
+    cumsums = list(accumulate([vrp_instance.best_proposal_freq[i] for i in sorted(vrp_instance.best_proposal_freq.keys())]))
+    rand = random.randint(0, cumsums[-1])
+    if rand < cumsums[0]:
+        vrp_instance.stoc_proposal_freq[0] += 1
         a = proposal_two_opt_swap(Solution([a[:] for a in x.vehicle_routes]))
         b = proposal_two_opt_swap(Solution([a[:] for a in x.vehicle_routes]))
         c = proposal_two_opt_swap(Solution([a[:] for a in x.vehicle_routes]))
@@ -333,7 +343,8 @@ def proposal_stochastic_greedy(x: Solution, vrp_instance: VRPInstance):
         d_obj = objective(d, vrp_instance)
 
         return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
-    if rand == 1:
+    elif rand < cumsums[1]:
+        vrp_instance.stoc_proposal_freq[1] += 1
         a = proposal_three_opt_swap(Solution([a[:] for a in x.vehicle_routes]), vrp_instance)
         b = proposal_three_opt_swap(Solution([a[:] for a in x.vehicle_routes]), vrp_instance)
         c = proposal_three_opt_swap(Solution([a[:] for a in x.vehicle_routes]), vrp_instance)
@@ -345,7 +356,8 @@ def proposal_stochastic_greedy(x: Solution, vrp_instance: VRPInstance):
         d_obj = objective(d, vrp_instance)
 
         return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
-    elif rand == 2:
+    elif rand < cumsums[2]:
+        vrp_instance.stoc_proposal_freq[2] += 1
         a = proposal_relocate_customer(Solution([a[:] for a in x.vehicle_routes]))
         b = proposal_relocate_customer(Solution([a[:] for a in x.vehicle_routes]))
         c = proposal_relocate_customer(Solution([a[:] for a in x.vehicle_routes]))
@@ -357,7 +369,8 @@ def proposal_stochastic_greedy(x: Solution, vrp_instance: VRPInstance):
         d_obj = objective(d, vrp_instance)
 
         return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
-    elif rand == 3:
+    elif rand < cumsums[3]:
+        vrp_instance.stoc_proposal_freq[3] += 1
         a = proposal_exchange_customers(Solution([a[:] for a in x.vehicle_routes]))
         b = proposal_exchange_customers(Solution([a[:] for a in x.vehicle_routes]))
         c = proposal_exchange_customers(Solution([a[:] for a in x.vehicle_routes]))
@@ -369,7 +382,8 @@ def proposal_stochastic_greedy(x: Solution, vrp_instance: VRPInstance):
         d_obj = objective(d, vrp_instance)
 
         return sorted([(a_obj, a), (b_obj, b), (c_obj, c), (d_obj, d)], key=lambda tup: tup[0])[0][1]
-    elif rand == 4:
+    else:
+        vrp_instance.stoc_proposal_freq[4] += 1
         a = proposal_cross_routes(Solution([a[:] for a in x.vehicle_routes]))
         b = proposal_cross_routes(Solution([a[:] for a in x.vehicle_routes]))
         c = proposal_cross_routes(Solution([a[:] for a in x.vehicle_routes]))
@@ -621,6 +635,9 @@ def main():
 
         # Choose a proposal function:
         proposal_function = None
+        # if iter_num == math.ceil(len(epsilon_schedule) / 4):
+        #     print(vrp_instance.best_proposal_freq.most_common())
+        #     exit(0)
         if iter_num < len(epsilon_schedule) / 4:
             proposal_function = lambda x: proposal_greedy_mix(x, vrp_instance)
         else:
@@ -666,6 +683,8 @@ def main():
     objective_value = objective(annealed_solution, vrp_instance)
     solution_string = annealed_solution.format_routes_string()
 
+    print(vrp_instance.best_proposal_freq.most_common())
+    print(vrp_instance.stoc_proposal_freq.most_common())
     # Print out in the expected format:
     print("Instance: " + os.path.basename(file_name) +
           " Time: " + "{:.2f}".format(elapsed_time) +
