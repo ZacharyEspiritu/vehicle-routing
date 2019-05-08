@@ -646,19 +646,6 @@ def main():
         else:
             iters_since_change = 0
 
-    # print("Done with annealing. Going to two-opt swap!")
-
-    # epsilon_schedule = [5, 3, 1]
-    # for epsilon in epsilon_schedule:
-    #     current_objective = objective(annealed_solution, vrp_instance)
-    #     print("Epsilon: " + str(epsilon))
-    #     print("Current Objective: " + str(current_objective))
-
-    #     annealed_solution = local_search(lambda x: objective(x, vrp_instance),
-    #                                  lambda x: proposal_stochastic_route_swapping(x, vrp_instance),
-    #                                  annealed_solution, epsilon, 5, 1)
-
-
     end_time     = time()
     elapsed_time = end_time - start_time
 
