@@ -1,6 +1,8 @@
 import os
 import random
 
+from threading import Thread
+
 from math import sqrt
 from sys import argv, float_info
 from time import time
@@ -577,6 +579,15 @@ def proposal_reorder_customer_in_route(x: Solution):
 ## Main
 ##
 
+def thread_runner(array_ptr, array_index, objective_function,
+                  proposal_function, initial_solution, acceptance_epsilon,
+                  improvement_time, improvement_delta):
+    print("Hello from thread " + str(array_index) + "!")
+    array_ptr[array_index] = local_search(objective_function,
+                                          proposal_function, initial_solution,
+                                          acceptance_epsilon, improvement_time, improvement_delta)
+    print("Goodbye from thread " + str(array_index) + "!")
+
 def main():
     # Parse command-line arguments:
     if len(argv) != 2:
@@ -628,9 +639,35 @@ def main():
         assert(proposal_function is not None)
 
         # Apply local search to the current solution:
-        next_annealed = local_search(lambda x: objective(x, vrp_instance),
-                                     proposal_function, annealed_solution,
-                                     epsilon, timeout, improvement_delta)
+        num_threads = max(min(iter_num + 1, 4), 1)
+        threads     = [None] * num_threads
+        results     = [None] * num_threads
+        for i in range(0, num_threads):
+            proposal_function = None
+            if i % 2 == 0:
+                proposal_function = lambda x: proposal_greedy_mix(x, vrp_instance)
+            else:
+                proposal_function = lambda x: proposal_stochastic_greedy(x, vrp_instance)
+
+            threads[i] = Thread(target=thread_runner,
+                                args=(results, i, lambda x: objective(x, vrp_instance),
+                                      proposal_function, annealed_solution,
+                                      epsilon * (i + 1), timeout, improvement_delta))
+            threads[i].start()
+
+        # Join all threads:
+        for i in range(0, num_threads):
+            threads[i].join()
+
+        # Pick the best solution as our annealed solution:
+        cur_best_obj  = float_info.max
+        cur_best_sol  = None
+        for res in results:
+            res_obj = objective(res, vrp_instance)
+            if res_obj < cur_best_obj:
+                cur_best_obj = res_obj
+                cur_best_sol = res
+        next_annealed = cur_best_sol
 
         prev_objective = objective(annealed_solution, vrp_instance)
         next_objective = objective(next_annealed, vrp_instance)
